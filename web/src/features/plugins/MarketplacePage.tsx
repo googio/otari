@@ -205,6 +205,7 @@ export function MarketplacePage() {
                 }.`
               : ""
         }
+        entry={pending?.kind === "repo" ? pending.entry : undefined}
         verified={pending?.kind === "repo" && pending.entry.verified}
         confirmation={
           pending?.kind === "upload"
