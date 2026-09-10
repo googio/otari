@@ -6,7 +6,7 @@ a table, so it stays out of ``gateway.models.__init__``.
 
 import re
 import tomllib
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -21,6 +21,17 @@ DEFAULT_GITHUB_TOPIC = "otari-plugin"
 # Alembic version table, so it is kept to the characters all three accept.
 PLUGIN_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 PACKAGE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
+
+# The kinds of thing a plugin can add. Each maps to one PluginContext method,
+# and the registry checks what a plugin registered against what it declared.
+Contribution = Literal["routes", "cli", "migrations", "ui", "traffic"]
+CONTRIBUTION_LABELS: dict[str, str] = {
+    "routes": "API routes under /api/v1/plugins/<name>",
+    "cli": "otari command groups",
+    "migrations": "database tables of its own",
+    "ui": "a page in the dashboard",
+    "traffic": "watches inference traffic",
+}
 
 
 class PluginManifestError(ValueError):
@@ -52,6 +63,23 @@ class PluginManifest(BaseModel):
     entrypoint: str = Field(default="register", description="Attribute on the package that registers the plugin.")
     homepage: str | None = Field(default=None, max_length=500)
     min_otari_version: str | None = Field(default=None, max_length=64)
+    getting_started: str | None = Field(
+        default=None,
+        max_length=500,
+        description="URL of the page that walks a new user through setting the plugin up.",
+    )
+    contributes: list[Contribution] = Field(
+        default_factory=list,
+        description=(
+            "What the plugin adds to the gateway. Declared before any code runs, shown before "
+            "install, and enforced at load: a plugin that registers something it did not declare "
+            "is refused."
+        ),
+    )
+    config_keys: list[str] = Field(
+        default_factory=list,
+        description="The keys the plugin reads from its own block of config.yml.",
+    )
     ui: PluginUiManifest | None = None
 
     @field_validator("name")
