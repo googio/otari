@@ -667,6 +667,8 @@ def _attach_plugin_commands() -> None:
     Never fatal: a plugin that breaks here is skipped so the built-in commands
     keep working, and ``otari plugins list`` reports why.
     """
+    if not isinstance(cli, click.Group):
+        return
     try:
         from gateway.plugins import load_plugins
 
