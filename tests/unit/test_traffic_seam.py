@@ -169,7 +169,7 @@ def test_chat_assembler_joins_argument_fragments_across_chunks() -> None:
         {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
     ]
 
-    completed = [call for chunk in chunks for call in assembler.feed(chunk)]
+    completed = [done.tool_call for chunk in chunks for done in assembler.feed(chunk)]
 
     assert completed == [ToolCall("c1", "Bash", {"command": "ls"})]
     assert assembler.finish() == []
@@ -197,19 +197,22 @@ def test_messages_assembler_completes_a_tool_use_block_on_stop() -> None:
 
     completed = assembler.feed({"type": "content_block_stop", "index": 1})
 
-    assert completed == [ToolCall("t1", "Bash", {"command": "git status"})]
+    expected = [(1, ToolCall("t1", "Bash", {"command": "git status"}))]
+    assert [(done.key, done.tool_call) for done in completed] == expected
 
 
 def test_responses_assembler_reads_done_function_call_items() -> None:
     assembler = ResponsesToolCallAssembler()
 
     assert assembler.feed({"type": "response.output_item.added", "item": {"type": "function_call"}}) == []
-    assert assembler.feed(
+    completed = assembler.feed(
         {
             "type": "response.output_item.done",
+            "output_index": 2,
             "item": {"type": "function_call", "call_id": "f1", "name": "shell", "arguments": "{}"},
         }
-    ) == [ToolCall("f1", "shell", {})]
+    )
+    assert [(done.key, done.tool_call) for done in completed] == [(2, ToolCall("f1", "shell", {}))]
 
 
 # --- dispatch ----------------------------------------------------------------
@@ -235,21 +238,22 @@ class _Recorder:
 
 
 @pytest.mark.asyncio
-async def test_hooks_collect_annotations_per_plugin_and_record_would_deny() -> None:
+async def test_hooks_collect_annotations_per_plugin_and_record_denials() -> None:
     recorder = _Recorder()
     hooks = TrafficHooks(TrafficObservers([("gates", recorder)]), CALLER, conversation())
 
     await hooks.request()
-    await hooks.tool_call(ToolCall("c1", "Bash", {"command": "git push --force"}))
-    await hooks.tool_call(ToolCall("c2", "Edit", {}))
+    assert await hooks.tool_call(ToolCall("c1", "Bash", {"command": "git push --force"})) == "no force-push"
+    assert await hooks.tool_call(ToolCall("c2", "Edit", {})) is None
 
     assert len(recorder.requests) == 1
     assert [call.tool_call.id for call in recorder.calls] == ["c1", "c2"]
+    assert hooks.denied == {"c1": "no force-push"}
     assert hooks.annotations == {
         "gates": {
             "seen": True,
             "fired": ["a", "Bash", "Edit"],
-            "would_deny": [{"tool_call_id": "c1", "message": "no force-push"}],
+            "denied": [{"tool_call_id": "c1", "name": "Bash", "message": "no force-push"}],
         }
     }
 
