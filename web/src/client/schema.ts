@@ -1069,7 +1069,8 @@ export interface paths {
          * @description General health check endpoint.
          *
          *     Returns basic health status. For infrastructure monitoring,
-         *     use /health/readiness or /health/liveness instead.
+         *     use /health/readiness or /health/liveness instead. ``plugins`` lists each
+         *     loaded plugin that registered a health check, with what it reported.
          */
         get: operations["health-health_check"];
         put?: never;
@@ -2926,6 +2927,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/plugins/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plugin Pages
+         * @description The dashboard pages loaded plugins ship, for the rail: every member page, and the operator pages for an operator.
+         *
+         *     Authenticated the way the operator routes are, but not gated on the answer:
+         *     a member sees the pages a plugin declared for members and nothing else.
+         */
+        get: operations["plugins-list_plugin_pages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/plugins/upload": {
         parameters: {
             query?: never;
@@ -2961,6 +2985,34 @@ export interface paths {
          * @description Delete a plugin installed in the plugins directory. It unloads on the next start.
          */
         delete: operations["plugins-remove_plugin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plugins/{name}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Plugin Settings
+         * @description A plugin's typed settings and their live values.
+         */
+        get: operations["plugins-get_plugin_settings"];
+        /**
+         * Update Plugin Settings
+         * @description Change a plugin's settings from the dashboard.
+         *
+         *     Validated against the manifest, persisted, then applied to the running
+         *     plugin, which is told through its ``on_settings_change`` listeners. A
+         *     ``null`` clears a key back to what config.yml or the manifest default says.
+         */
+        put: operations["plugins-update_plugin_settings"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -7381,13 +7433,28 @@ export interface components {
              * Contributes
              * @description What the manifest declares; what loaded is enforced to match.
              */
-            contributes: ("routes" | "cli" | "migrations" | "ui" | "traffic")[];
+            contributes: ("routes" | "cli" | "migrations" | "ui" | "traffic" | "lifecycle" | "events" | "guardrails" | "tools" | "routing")[];
             /** Description */
             description: string;
             /** Error */
             error?: string | null;
+            /**
+             * Events
+             * @description Events it subscribed to.
+             */
+            events?: string[];
             /** Getting Started */
             getting_started?: string | null;
+            /**
+             * Guardrails
+             * @description Guardrail profiles it offers.
+             */
+            guardrails?: string[];
+            /**
+             * Health
+             * @description What its last health check reported.
+             */
+            health?: string | null;
             /** Homepage */
             homepage?: string | null;
             /**
@@ -7395,13 +7462,26 @@ export interface components {
              * @description Whether the plugin owns database migrations.
              */
             migrations: boolean;
+            /** Modes */
+            modes: ("standalone" | "hosted" | "hybrid")[];
             /** Name */
             name: string;
+            /** Pages */
+            pages?: components["schemas"]["PluginPageInfo"][];
+            /** Plugin Api */
+            plugin_api: number;
+            /**
+             * Router Backends
+             * @description Router backends it offers.
+             */
+            router_backends?: string[];
             /**
              * Routes
              * @description How many routes the plugin registered.
              */
             routes: number;
+            /** Settings */
+            settings?: components["schemas"]["PluginSettingField"][];
             /**
              * Source
              * @enum {string}
@@ -7412,6 +7492,17 @@ export interface components {
              * @enum {string}
              */
             status: "loaded" | "failed" | "disabled" | "pending_restart";
+            /**
+             * Tools
+             * @description Tool backends it offers.
+             */
+            tools?: string[];
+            /**
+             * Traffic
+             * @description Whether it watches inference traffic.
+             * @default false
+             */
+            traffic: boolean;
             ui?: components["schemas"]["PluginUiInfo"] | null;
             /** Version */
             version: string;
@@ -9514,7 +9605,7 @@ export interface components {
              * Contributes
              * @description What the plugin adds; enforced when it loads.
              */
-            contributes: ("routes" | "cli" | "migrations" | "ui" | "traffic")[];
+            contributes: ("routes" | "cli" | "migrations" | "ui" | "traffic" | "lifecycle" | "events" | "guardrails" | "tools" | "routing")[];
             /** Description */
             description: string;
             /**
@@ -9524,10 +9615,76 @@ export interface components {
             getting_started?: string | null;
             /** Homepage */
             homepage?: string | null;
+            /**
+             * Modes
+             * @description The runtime modes it loads in.
+             */
+            modes: ("standalone" | "hosted" | "hybrid")[];
             /** Name */
             name: string;
+            /**
+             * Pages
+             * @description Labels of the dashboard pages it ships.
+             */
+            pages?: string[];
+            /**
+             * Plugin Api
+             * @description The plugin API version it is written against.
+             */
+            plugin_api: number;
+            /** Settings */
+            settings?: components["schemas"]["PluginSettingField"][];
+            /**
+             * Supported Here
+             * @description Whether this gateway provides that plugin API version.
+             */
+            supported_here: boolean;
             /** Version */
             version: string;
+        };
+        /**
+         * PluginPageInfo
+         * @description One dashboard page a plugin ships, and where its row goes.
+         */
+        PluginPageInfo: {
+            /**
+             * Audience
+             * @enum {string}
+             */
+            audience: "operator" | "member";
+            /**
+             * Icon
+             * @enum {string}
+             */
+            icon: "layout" | "shield" | "activity" | "tool" | "zap" | "package" | "check-circle" | "git-branch" | "eye" | "bell" | "book" | "database" | "globe" | "message-square" | "sliders" | "terminal" | "search" | "lock";
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Order */
+            order: number;
+            /** Parent */
+            parent?: ("tools" | "routing") | null;
+            /**
+             * Path
+             * @description The dashboard path that frames it.
+             */
+            path: string;
+            /**
+             * Section
+             * @enum {string}
+             */
+            section: "observe" | "build" | "access" | "extend" | "none";
+            /**
+             * Url
+             * @description Where the page is served; the dashboard frames it.
+             */
+            url: string;
+        };
+        /** PluginPagesResponse */
+        PluginPagesResponse: {
+            /** Pages */
+            pages: components["schemas"]["PluginPageInfo"][];
         };
         /** PluginProblem */
         PluginProblem: {
@@ -9541,13 +9698,57 @@ export interface components {
              */
             source: "entry_point" | "directory";
         };
+        /**
+         * PluginSettingField
+         * @description One typed setting from the manifest, as the dashboard renders it.
+         */
+        PluginSettingField: {
+            /** Default */
+            default?: unknown;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Editable
+             * @default true
+             */
+            editable: boolean;
+            /** Key */
+            key: string;
+            /**
+             * Secret
+             * @default false
+             */
+            secret: boolean;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "str" | "int" | "float" | "bool" | "list" | "object";
+        };
+        /** PluginSettingsResponse */
+        PluginSettingsResponse: {
+            /** Fields */
+            fields: components["schemas"]["PluginSettingField"][];
+            /** Plugin */
+            plugin: string;
+            /**
+             * Values
+             * @description Each declared setting's live value; a set secret reads as masked.
+             */
+            values: {
+                [key: string]: unknown;
+            };
+        };
         /** PluginUiInfo */
         PluginUiInfo: {
             /** Label */
             label: string;
             /**
              * Url
-             * @description Where the plugin's page is served; the dashboard frames it.
+             * @description Where the plugin's first page is served; the dashboard frames it.
              */
             url: string;
         };
@@ -9560,6 +9761,11 @@ export interface components {
             directory: string;
             /** Install Allowed */
             install_allowed: boolean;
+            /**
+             * Plugin Api
+             * @description The plugin API version this gateway provides.
+             */
+            plugin_api: number;
             /** Plugins */
             plugins: components["schemas"]["InstalledPlugin"][];
             /**
@@ -11019,6 +11225,16 @@ export interface components {
             } | null;
             /** Reject User Mismatch */
             reject_user_mismatch?: boolean | null;
+        };
+        /** UpdatePluginSettingsRequest */
+        UpdatePluginSettingsRequest: {
+            /**
+             * Values
+             * @description Settings to change; null clears one back to config or default.
+             */
+            values: {
+                [key: string]: unknown;
+            };
         };
         /**
          * UpdateScopedBudgetRequest
@@ -13960,7 +14176,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: string;
+                        [key: string]: unknown;
                     };
                 };
             };
@@ -17251,6 +17467,26 @@ export interface operations {
             };
         };
     };
+    "plugins-list_plugin_pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginPagesResponse"];
+                };
+            };
+        };
+    };
     "plugins-upload_plugin": {
         parameters: {
             query?: never;
@@ -17301,6 +17537,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "plugins-get_plugin_settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "plugins-update_plugin_settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePluginSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginSettingsResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
